@@ -1,59 +1,43 @@
 const express = require("express");
 const router = express.Router();
-const Inventory = require("../models/Inventory");
-const Product = require("../models/Product");
+const db = require("../db/connection");
 
-// Add or update inventory
-router.post("/", async (req, res) => {
+// Get all stock levels
+router.get("/", (req, res) => {
   try {
-    const { productId, warehouseId, quantity } = req.body;
+    const stock = db.prepare(`
+      SELECT s.*, p.name as product_name, p.sku, p.reorder_level,
+             l.name as location_name, w.name as warehouse_name
+      FROM stock s
+      JOIN products p ON s.product_id = p.id
+      JOIN locations l ON s.location_id = l.id
+      JOIN warehouses w ON l.warehouse_id = w.id
+    `).all();
 
-    let inventory = await Inventory.findOne({ productId, warehouseId });
+    // Flag low stock items
+    const result = stock.map(item => ({
+      ...item,
+      low_stock: item.quantity <= item.reorder_level
+    }));
 
-    if (inventory) {
-      inventory.quantity += quantity;
-      await inventory.save();
-    } else {
-      inventory = new Inventory({ productId, warehouseId, quantity });
-      await inventory.save();
-    }
-
-    // Check low stock
-    const product = await Product.findById(productId);
-    const lowStock = product && inventory.quantity <= product.reorderLevel;
-
-    res.status(201).json({
-      inventory,
-      alert: lowStock
-        ? `⚠️ Low stock alert: ${product.name} has only ${inventory.quantity} units left`
-        : null,
-    });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Get all inventory
-router.get("/", async (req, res) => {
+// Get stock by warehouse
+router.get("/warehouse/:warehouseId", (req, res) => {
   try {
-    const inventory = await Inventory.find()
-      .populate("productId")
-      .populate("warehouseId");
-    res.json(inventory);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Get inventory by warehouse
-router.get("/warehouse/:warehouseId", async (req, res) => {
-  try {
-    const inventory = await Inventory.find({
-      warehouseId: req.params.warehouseId,
-    })
-      .populate("productId")
-      .populate("warehouseId");
-    res.json(inventory);
+    const stock = db.prepare(`
+      SELECT s.*, p.name as product_name, p.sku, p.reorder_level,
+             l.name as location_name
+      FROM stock s
+      JOIN products p ON s.product_id = p.id
+      JOIN locations l ON s.location_id = l.id
+      WHERE l.warehouse_id = ?
+    `).all(req.params.warehouseId);
+    res.json(stock);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

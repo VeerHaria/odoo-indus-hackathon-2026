@@ -1,49 +1,37 @@
 const express = require("express");
 const router = express.Router();
-const Warehouse = require("../models/Warehouse");
+const db = require("../db/connection");
 
 // Create warehouse
-router.post("/", async (req, res) => {
+router.post("/", (req, res) => {
   try {
-    const warehouse = new Warehouse(req.body);
-    await warehouse.save();
-    res.status(201).json(warehouse);
+    const { name, address } = req.body;
+    const result = db.prepare(
+      "INSERT INTO warehouses (name, address) VALUES (?, ?)"
+    ).run(name, address);
+    res.status(201).json({ id: result.lastInsertRowid, name, address });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 // Get all warehouses
-router.get("/", async (req, res) => {
+router.get("/", (req, res) => {
   try {
-    const warehouses = await Warehouse.find();
+    const warehouses = db.prepare("SELECT * FROM warehouses").all();
     res.json(warehouses);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Get single warehouse
-router.get("/:id", async (req, res) => {
+// Get single warehouse with its locations
+router.get("/:id", (req, res) => {
   try {
-    const warehouse = await Warehouse.findById(req.params.id);
+    const warehouse = db.prepare("SELECT * FROM warehouses WHERE id = ?").get(req.params.id);
     if (!warehouse) return res.status(404).json({ message: "Warehouse not found" });
-    res.json(warehouse);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Update warehouse
-router.put("/:id", async (req, res) => {
-  try {
-    const warehouse = await Warehouse.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    if (!warehouse) return res.status(404).json({ message: "Warehouse not found" });
-    res.json(warehouse);
+    const locations = db.prepare("SELECT * FROM locations WHERE warehouse_id = ?").all(req.params.id);
+    res.json({ ...warehouse, locations });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

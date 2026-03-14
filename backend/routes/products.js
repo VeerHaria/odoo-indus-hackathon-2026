@@ -1,28 +1,30 @@
 const express = require("express");
 const router = express.Router();
-const Product = require("../models/Product");
+const db = require("../db/connection");
 
 // Create product
-router.post("/", async (req, res) => {
+router.post("/", (req, res) => {
   try {
-    const product = new Product(req.body);
-    await product.save();
-    res.status(201).json(product);
+    const { name, sku, category_id, unit_of_measure, reorder_level } = req.body;
+    const stmt = db.prepare(
+      `INSERT INTO products (name, sku, category_id, unit_of_measure, reorder_level)
+       VALUES (?, ?, ?, ?, ?)`
+    );
+    const result = stmt.run(name, sku, category_id, unit_of_measure, reorder_level || 10);
+    res.status(201).json({ id: result.lastInsertRowid, name, sku });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 // Get all products
-router.get("/", async (req, res) => {
+router.get("/", (req, res) => {
   try {
-    const { category, search } = req.query;
-    let filter = { isArchived: false };
-
-    if (category) filter.category = category;
-    if (search) filter.name = { $regex: search, $options: "i" };
-
-    const products = await Product.find(filter);
+    const products = db.prepare(`
+      SELECT p.*, c.name as category_name
+      FROM products p
+      LEFT JOIN categories c ON p.category_id = c.id
+    `).all();
     res.json(products);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -30,9 +32,9 @@ router.get("/", async (req, res) => {
 });
 
 // Get single product
-router.get("/:id", async (req, res) => {
+router.get("/:id", (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = db.prepare("SELECT * FROM products WHERE id = ?").get(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
     res.json(product);
   } catch (error) {
@@ -41,25 +43,24 @@ router.get("/:id", async (req, res) => {
 });
 
 // Update product
-router.put("/:id", async (req, res) => {
+router.put("/:id", (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json(product);
+    const { name, sku, category_id, unit_of_measure, reorder_level } = req.body;
+    db.prepare(
+      `UPDATE products SET name=?, sku=?, category_id=?, unit_of_measure=?, reorder_level=?
+       WHERE id=?`
+    ).run(name, sku, category_id, unit_of_measure, reorder_level, req.params.id);
+    res.json({ message: "Product updated ✅" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Archive product (soft delete)
-router.delete("/:id", async (req, res) => {
+// Delete product
+router.delete("/:id", (req, res) => {
   try {
-    await Product.findByIdAndUpdate(req.params.id, { isArchived: true });
-    res.json({ message: "Product archived successfully" });
+    db.prepare("DELETE FROM products WHERE id = ?").run(req.params.id);
+    res.json({ message: "Product deleted ✅" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -1,85 +1,65 @@
 const express = require("express");
 const router = express.Router();
-const Inventory = require("../models/Inventory");
-const StockMovement = require("../models/StockMovement");
-const Product = require("../models/Product");
+const db = require("../db/connection");
 
-// Create stock movement
-router.post("/", async (req, res) => {
+// Create stock movement (receipt, delivery, transfer)
+router.post("/", (req, res) => {
   try {
-    const { productId, warehouseId, type, quantity, note } = req.body;
+    const { product_id, from_location, to_location, quantity, operation_type, reference, supplier_id, customer_id } = req.body;
 
-    // Find or create inventory record
-    let inventory = await Inventory.findOne({ productId, warehouseId });
-    if (!inventory) {
-      inventory = new Inventory({ productId, warehouseId, quantity: 0 });
-    }
+    // Create the operation
+    const operation = db.prepare(`
+      INSERT INTO operations (operation_type, reference, supplier_id, customer_id, status)
+      VALUES (?, ?, ?, ?, 'done')
+    `).run(operation_type, reference || `OP-${Date.now()}`, supplier_id || null, customer_id || null);
 
-    // Apply stock change based on movement type
-    if (["RECEIPT", "TRANSFER_IN", "ADJUSTMENT"].includes(type)) {
-      inventory.quantity += quantity;
-    } else if (["DELIVERY", "TRANSFER_OUT"].includes(type)) {
-      if (inventory.quantity < quantity) {
-        return res.status(400).json({
-          message: `Not enough stock. Available: ${inventory.quantity}, Requested: ${quantity}`,
-        });
-      }
-      inventory.quantity -= quantity;
-    } else {
-      return res.status(400).json({ message: "Invalid movement type" });
-    }
+    const operation_id = operation.lastInsertRowid;
 
-    await inventory.save();
+    // Create the stock move — triggers handle stock updates automatically
+    db.prepare(`
+      INSERT INTO stock_moves (operation_id, product_id, from_location, to_location, quantity)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(operation_id, product_id, from_location || null, to_location || null, quantity);
 
-    // Save the movement record
-    const movement = new StockMovement({
-      productId,
-      warehouseId,
-      type,
-      quantity,
-      note,
-    });
-    await movement.save();
+    // Get updated stock
+    const updatedStock = db.prepare(`
+      SELECT s.quantity, p.name as product_name, p.reorder_level
+      FROM stock s
+      JOIN products p ON s.product_id = p.id
+      WHERE s.product_id = ?
+      LIMIT 1
+    `).get(product_id);
 
-    // Check low stock after movement
-    const product = await Product.findById(productId);
-    const lowStock = product && inventory.quantity <= product.reorderLevel;
+    const lowStock = updatedStock && updatedStock.quantity <= updatedStock.reorder_level;
 
     res.status(201).json({
       message: "Stock movement recorded ✅",
-      movement,
-      updatedInventory: inventory,
+      operation_id,
+      updatedStock,
       alert: lowStock
-        ? `⚠️ Low stock alert: ${product.name} has only ${inventory.quantity} units left`
-        : null,
+        ? `⚠️ Low stock: ${updatedStock.product_name} has only ${updatedStock.quantity} units left`
+        : null
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Get all movements (newest first)
-router.get("/", async (req, res) => {
+// Get all movements
+router.get("/", (req, res) => {
   try {
-    const movements = await StockMovement.find()
-      .populate("productId")
-      .populate("warehouseId")
-      .sort({ createdAt: -1 });
-    res.json(movements);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Get movements by product
-router.get("/product/:productId", async (req, res) => {
-  try {
-    const movements = await StockMovement.find({
-      productId: req.params.productId,
-    })
-      .populate("productId")
-      .populate("warehouseId")
-      .sort({ createdAt: -1 });
+    const movements = db.prepare(`
+      SELECT sm.*, p.name as product_name, p.sku,
+             fl.name as from_location_name,
+             tl.name as to_location_name,
+             o.operation_type, o.reference, o.status
+      FROM stock_moves sm
+      JOIN products p ON sm.product_id = p.id
+      JOIN operations o ON sm.operation_id = o.id
+      LEFT JOIN locations fl ON sm.from_location = fl.id
+      LEFT JOIN locations tl ON sm.to_location = tl.id
+      ORDER BY sm.id DESC
+    `).all();
     res.json(movements);
   } catch (error) {
     res.status(500).json({ message: error.message });
