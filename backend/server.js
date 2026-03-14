@@ -5,13 +5,6 @@ const helmet = require("helmet");
 
 const db = require("./db/connection");
 
-const authRoutes = require("./routes/auth");
-const productRoutes = require("./routes/products");
-const warehouseRoutes = require("./routes/warehouses");
-const inventoryRoutes = require("./routes/inventory");
-const stockMovementRoutes = require("./routes/stockMovement");
-const dashboardRoutes = require("./routes/dashboard");
-
 const app = express();
 
 // Security + middleware
@@ -24,17 +17,20 @@ app.get("/", (req, res) => {
   res.json({
     message: "CoreInventory API running ✅",
     version: "1.0.0",
-    endpoints: ["/auth", "/products", "/warehouses", "/inventory", "/stock-movements", "/dashboard"]
+    endpoints: ["/auth", "/products", "/warehouses", "/inventory", "/stock-movements", "/dashboard", "/adjustments", "/suppliers", "/customers"]
   });
 });
 
 // Routes
-app.use("/auth", authRoutes);
-app.use("/products", productRoutes);
-app.use("/warehouses", warehouseRoutes);
-app.use("/inventory", inventoryRoutes);
-app.use("/stock-movements", stockMovementRoutes);
-app.use("/dashboard", dashboardRoutes);
+app.use("/auth", require("./routes/auth"));
+app.use("/products", require("./routes/products"));
+app.use("/warehouses", require("./routes/warehouses"));
+app.use("/inventory", require("./routes/inventory"));
+app.use("/stock-movements", require("./routes/stockMovement"));
+app.use("/dashboard", require("./routes/dashboard"));
+app.use("/adjustments", require("./routes/adjustments"));
+app.use("/suppliers", require("./routes/suppliers"));
+app.use("/customers", require("./routes/customers"));
 
 // 404 handler
 app.use((req, res) => {
