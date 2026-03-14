@@ -1,10 +1,9 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-
-// This line creates the database and all tables automatically
 const db = require("./db/connection");
 
+const authRoutes = require("./routes/auth");
 const productRoutes = require("./routes/products");
 const warehouseRoutes = require("./routes/warehouses");
 const inventoryRoutes = require("./routes/inventory");
@@ -13,15 +12,16 @@ const dashboardRoutes = require("./routes/dashboard");
 
 const app = express();
 
+// MIDDLEWARE MUST COME FIRST
 app.use(cors());
 app.use(express.json());
 
-// Health check
+// ROUTES COME AFTER
 app.get("/", (req, res) => {
   res.json({ message: "CoreInventory API running ✅" });
 });
 
-// Routes
+app.use("/auth", authRoutes);
 app.use("/products", productRoutes);
 app.use("/warehouses", warehouseRoutes);
 app.use("/inventory", inventoryRoutes);
