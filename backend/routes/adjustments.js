@@ -1,20 +1,16 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db/connection");
-const { protect } = require("../middleware/auth");
 const { validateFields } = require("../middleware/validate");
 
-// Create adjustment
-router.post("/", protect, (req, res) => {
+router.post("/", (req, res) => {
   try {
     const error = validateFields(["product_id", "location_id", "counted_qty"], req.body);
     if (error) return res.status(400).json({ message: error });
 
     const { product_id, location_id, counted_qty, reason } = req.body;
 
-    if (counted_qty < 0) {
-      return res.status(400).json({ message: "Counted quantity cannot be negative." });
-    }
+    if (counted_qty < 0) return res.status(400).json({ message: "Counted quantity cannot be negative." });
 
     const product = db.prepare("SELECT * FROM products WHERE id = ?").get(product_id);
     if (!product) return res.status(404).json({ message: "Product not found." });
@@ -22,7 +18,7 @@ router.post("/", protect, (req, res) => {
     const location = db.prepare("SELECT * FROM locations WHERE id = ?").get(location_id);
     if (!location) return res.status(404).json({ message: "Location not found." });
 
-    let stock = db.prepare(
+    const stock = db.prepare(
       "SELECT * FROM stock WHERE product_id = ? AND location_id = ?"
     ).get(product_id, location_id);
 
@@ -67,8 +63,7 @@ router.post("/", protect, (req, res) => {
   }
 });
 
-// Get all adjustments
-router.get("/", protect, (req, res) => {
+router.get("/", (req, res) => {
   try {
     const adjustments = db.prepare(`
       SELECT a.*, p.name as product_name, p.sku,

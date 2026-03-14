@@ -1,10 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db/connection");
-const { protect } = require("../middleware/auth");
 const { validateFields } = require("../middleware/validate");
 
-router.get("/", protect, (req, res) => {
+router.get("/", (req, res) => {
   try {
     const suppliers = db.prepare("SELECT * FROM suppliers ORDER BY name").all();
     res.json({ count: suppliers.length, suppliers });
@@ -13,7 +12,7 @@ router.get("/", protect, (req, res) => {
   }
 });
 
-router.post("/", protect, (req, res) => {
+router.post("/", (req, res) => {
   try {
     const error = validateFields(["name"], req.body);
     if (error) return res.status(400).json({ message: error });
@@ -32,7 +31,7 @@ router.post("/", protect, (req, res) => {
   }
 });
 
-router.delete("/:id", protect, (req, res) => {
+router.delete("/:id", (req, res) => {
   try {
     const supplier = db.prepare("SELECT id FROM suppliers WHERE id = ?").get(req.params.id);
     if (!supplier) return res.status(404).json({ message: "Supplier not found." });
